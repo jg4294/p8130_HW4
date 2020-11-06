@@ -1,0 +1,228 @@
+---
+title: "p8130 HW4"
+author: "JingYao Geng"
+date: "11/2/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(arsenal)
+library(patchwork)
+library(multcomp)
+knitr::opts_chunk$set(
+  fig.height = 6,
+  fig.width = 8,
+  message = F,
+  echo = F,
+  warning = F
+)
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis",
+  digits = 3
+)
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+
+## Problem 2
+
+#### **2(a)**
+There are a total of 25 observations in the "knee.csv" dataset with 8 observations in the 'below' group, 10 observations in the 'average' group, and 7 observations in the 'above' group. More statistics summaries are shown on the following table.  
+
+```{r 2.a.1, message=FALSE, warning=FALSE}
+
+knee.df =
+  read_csv("Knee.csv") %>%
+  janitor::clean_names() 
+
+
+#Descriptive statistics:
+summary(tableby( ~ below + average + above, data = knee.df), title = "Descriptive Statistics: Knee Data", text = T)
+
+```
+
+We tidy the original 'knee.csv' with 2 variables: 'status' and 'days'
+
+* status: the physical status before therapy (3 levels: above, average, below)
+* days: time required in physcial therapy until successful rehabilitation.) Therefore, the new dataset is call 'knee' with 30 observations and 5 missing values.
+
+
+The mean required time in physical therapy until successful rehabilitation is longer in the physical status before therapy is categorized as 'below'.
+
+The mean required time in physical therapy until successful rehabilitation is shorter in the physical status before therapy is categorized as 'above', except one observation.
+
+Based on the box plots below, we see no overlapping between the 3 groups: below, average, above. 
+
+```{r 2.a.2}
+
+knee_data =
+  read_csv("Knee.csv") %>%
+  pivot_longer(cols = Below:Above,
+               names_to = "status",
+               values_to = "day_to_rehab") %>%
+  janitor::clean_names() %>%
+  drop_na() %>% 
+  mutate(status =
+           forcats::fct_relevel(status, "Below", "Average", "Above"))
+
+#Data Visualization
+knee_data %>%
+  ggplot(aes(x = status, y = day_to_rehab, fill  = status)) +
+  geom_boxplot()
+```
+
+#### **2(b)**
+
+$H_0$: No significant difference among the population means for the 3 levels of status.
+$H_1$: At least one mean is different from the others.
+
+
+$Between~SS = \sum_{i=1}^k\sum_{j=1}^{n_i}(\bar{y_i} - \bar{\bar{y}})^2=\sum_i^kn_i\bar{y_i}^2-\frac{y_{..}^2}{n}$
+
+$Within~SS = \sum_{i=1}^k\sum_{j=1}^{n_i}(y_{ij}-\bar{y_i})^2=\sum_i^k(n_i-1)s_i^2$
+
+$Total~SS = Between~SS~+~Within~SS$
+
+$Between~MS = \frac{\sum_{i=1}^k\sum_{j=1}^{n_i}(\bar{y_i} - \bar{\bar{y}})^2}{k-1}$
+
+$Within~MS = \frac{\sum_{i=1}^k\sum_{j=1}^{n_i}(y_{ij}-\bar{y_i})^2}{n-k}$
+
+$F_{statistics} = \frac{Between~Mean~Square}{Within~Mean~Square} \sim F(k-1,n-k)$
+
+$Reject ~ H_0 ~ if ~ F>F_{k-1,n-k,1-\alpha}$; $Fail ~ reject ~ H_0 ~ if ~F<F_{k-1,n-k,1-\alpha}$
+
+$P-value:~area~to~the~right~P(F_{k-1,n-k}>F).$
+
+We obtain the ANOVA table as following:
+```{r 2.b}
+knee_anova = aov(day_to_rehab ~ status, data = knee_data, alpha = 0.01)
+summary(knee_anova)
+```
+
+At 0.1 significance level, the $F_{stat} =19.3 >F_{crit} = `r qf(0.99, 2, 22)`$, we reject the null hypothesis and conclude that at least two of mean required time of the 3 levels are different.
+
+#### **2(c)**
+
+**Bonfferroni Adjustments:** $\alpha^{*} = \frac{\alpha}{\left( \begin{array}{c} k \\ 2 \end{array} \right)}$ 
+
+$Reject~H_0:~if~|t|>t_{n-k,~1-\frac{\alpha^*}{2}}$
+
+$Fail~to~reject~otherwise.$
+
+Bonferroni is the most conservative method, it is the most stringent in declaring significance (thus, less powerful).
+
+
+```{r Bonfferroni}
+pairwise.t.test(x = knee_data$day_to_rehab, g = knee_data$status, p.adjust.method = "bonferroni", conf.level = 0.99
+  )
+```
+
+**Tukey:**
+
+Tukey's method - controls for all pairwise comparisons and it is less conservative than Bonferroni. For Tukey, we need to use another function 'TukeyHSD' with an object created by aov(): 'knee_anova'
+
+```{r}
+Tukey = TukeyHSD(knee_anova,conf.level = 0.99); Tukey
+plot(Tukey)
+```
+
+**Dunnett's method**: mainly focuses on comparisons wiht predefined control arms.
+
+```{r}
+summary(glht(knee_anova), linfct = mcp(Group = "Dunnett"))
+```
+
+After perfomming ANOVA and rejecting the null, it is often desired to know more about the specific groups and find out which ones are significantly different or similar. This step is usually referred to as "post-hoc analysis" Possible methods are: Bonfferroni, Tukey, and Dunnetts's methods. They all aim to control and preserve the overall (family-wise) error rate at the pre-specified alpha level.
+
+#### **2(d)**
+
+**Conclusion**:
+
+Based on the values of descriptive statitics, we find that the mean required time in physical therapy until successful rehabilitation is different based on the physical status before therapy. The mean required time is longer in the ‘below’ group and is shorter in the 'above' group. We further employ an ANOVA test to compare the mean required time for the 3 groups: below, average, and above. And we find that we are 99% confident that the mean required time in physcial therapy until successful rehabilitation of the 3 groups are different.
+
+
+
+## Problem 3
+
+#### **3(a)**
+
+**Identify Appropriate Test:**
+
+Since we have 2 categorical variables with more than 2 levels, we may employ the RxC Contingency Table and Chi-squared test. Moreover, since the distribution of swelling status is the same for the two treatment populations, it may suggest Chi-squared with honogemeity approach to evaluating the distribution/proportion between vaccine status and swelling symptom.
+
+**Assumption:** 
+
+  * independent random samples
+  * no expected cell counts are 0, and nor more than 20% of the cells have an expected counts less than 5. 
+
+#### **3(b)**
+
+**Table: Observed values**
+
+|        |Major_Swelling| Minor_Swelling| No_Swelling|Total|
+|--------|--------------|---------------|------------|-----|
+|Vaccine |            54|             42|         134|  230|
+|Placebo |            16|             32|         142|  190|
+|   Total|            70|             74|         276|  420|
+
+**Table: Expected Values**
+
+|       | Major_Swelling| Minor_Swelling| No_Swelling|
+|-------|---------------|---------------|------------|
+|Vaccine|           38.3|           40.5|         151|
+|Placebo|           31.7|           33.5|         125|
+
+**Pearson's Chi-squared test**
+
+data:  table
+X-squared = 19, df = 2, p-value = 9e-05
+
+
+```{r 3}
+v = c(54,42,134)
+p = c(16,32,142)
+table = rbind(v,p) 
+colnames(table) = c("Major_Swelling","Minor_Swelling","No_Swelling")
+rownames(table) = c("Vaccine", "Placebo")
+
+# observed values
+table
+
+# chi-squared test
+test = chisq.test(table);test #x^2=19, df=2, p_value = 9e-05
+
+# expected Value
+test$expected %>% as.tibble() %>% knitr::kable(caption = "Expected Values")
+
+```
+
+#### **3(c)**
+
+$H_0$ :  the proportions of a 'major' swelling symptom in 'vaccine' and 'placebo' are equal ($p_{11} =p_{21}$); AND, the proportions of a 'minor' swelling symptom in 'vaccine' and 'placebo' are equal ($p_{12} =p_{22}$); AND, the proportions of a 'no' swelling symptom in 'vaccine' and 'placebo' are equal ($p_{13} =p_{23}$)
+
+$H_1$ : not all proportions are equal.
+
+$\chi^2 = \sum_i^{R}\sum_j^{C}\frac{(n_{ij}-E_{ij})^2}{E_{ij}}~under~the~null~\sim \chi^2_{df = (R-1)\times(C-1)}$
+
+$\chi^2 = \sum_i^{2}\sum_j^{3}\frac{(n_{ij}-E_{ij})^2}{E_{ij}} \\= \frac{(54-38.3)^2}{38.3}+\frac{(42-40.5)^2}{40.5}+\frac{(134-151)^2}{151}+\frac{(16-31.7)^2}{31.7}+\frac{(32-33.5)^2}{33.5}+\frac{(142-125)^2}{125} \\\cong 18.5601 \\ \cong 19$
+
+$\chi^2_{df = (R-1)\times(C-1),1-\alpha} = \chi^2_{(2-1)\times(3-1), 1-0.05} = \chi^2_{2,~0.95} = `r qchisq(0.95,2)`$
+
+
+**Decision Rule:**
+
+$Reject~ H_0:~ if ~ \chi^2>\chi^2_{(R-1)*(C-1),1-\alpha}$
+
+$Fail~to~reject~H_0~otherwise.$
+
+**Conclusion:**
+
+Because $\chi^2>\chi^2_{2,0.95} = 5.991$, and the p_value is 9e-05, we reject the null hypothesis at 0.05 significance level, and conclude that the proportions of swell sympotoms in treatments: 'vaccine' and 'placebo' are not equal.
+
+
+
